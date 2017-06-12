@@ -6,13 +6,14 @@ import (
 
 	mgl "github.com/go-gl/mathgl/mgl32"
 	"golang.org/x/mobile/app"
-	"golang.org/x/mobile/event/config"
+	"golang.org/x/mobile/event/size"
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
 	"golang.org/x/mobile/event/touch"
 	"golang.org/x/mobile/exp/app/debug"
 	"golang.org/x/mobile/geom"
 	"golang.org/x/mobile/gl"
+	"golang.org/x/mobile/exp/gl/glutil"
 )
 
 type Shape struct {
@@ -34,85 +35,91 @@ type Engine struct {
 	shape    Shape
 	touchLoc geom.Point
 	started  time.Time
+	images   *glutil.Images
+	fps      *debug.FPS
 }
 
-func (e *Engine) Start() {
+func (e *Engine) Start(glctx gl.Context) {
 	var err error
 
-	e.shader.program, err = LoadProgram("shader.v.glsl", "shader.f.glsl")
+	e.shader.program, err = LoadProgram(glctx, "shader.v.glsl", "shader.f.glsl")
 	if err != nil {
 		panic(fmt.Sprintln("LoadProgram failed:", err))
 	}
 
-	e.shape.buf = gl.CreateBuffer()
-	gl.BindBuffer(gl.ARRAY_BUFFER, e.shape.buf)
-	gl.BufferData(gl.ARRAY_BUFFER, EncodeObject(cubeData), gl.STATIC_DRAW)
+	e.shape.buf = glctx.CreateBuffer()
+	glctx.BindBuffer(gl.ARRAY_BUFFER, e.shape.buf)
+	glctx.BufferData(gl.ARRAY_BUFFER, EncodeObject(cubeData), gl.STATIC_DRAW)
 
-	e.shader.vertCoord = gl.GetAttribLocation(e.shader.program, "vertCoord")
-	e.shader.vertTexCoord = gl.GetAttribLocation(e.shader.program, "vertTexCoord")
+	e.shader.vertCoord = glctx.GetAttribLocation(e.shader.program, "vertCoord")
+	e.shader.vertTexCoord = glctx.GetAttribLocation(e.shader.program, "vertTexCoord")
 
-	e.shader.projection = gl.GetUniformLocation(e.shader.program, "projection")
-	e.shader.view = gl.GetUniformLocation(e.shader.program, "view")
-	e.shader.model = gl.GetUniformLocation(e.shader.program, "model")
+	e.shader.projection = glctx.GetUniformLocation(e.shader.program, "projection")
+	e.shader.view = glctx.GetUniformLocation(e.shader.program, "view")
+	e.shader.model = glctx.GetUniformLocation(e.shader.program, "model")
 
-	e.shape.texture, err = LoadTexture("gopher.png")
+	e.shape.texture, err = LoadTexture(glctx, "gopher.png")
 	if err != nil {
 		panic(fmt.Sprintln("LoadTexture failed:", err))
 	}
 
 	e.started = time.Now()
+
+	e.images = glutil.NewImages(glctx)
+	e.fps = debug.NewFPS(e.images)
 }
 
-func (e *Engine) Stop() {
-	gl.DeleteProgram(e.shader.program)
-	gl.DeleteBuffer(e.shape.buf)
+func (e *Engine) Stop(glctx gl.Context) {
+	glctx.DeleteProgram(e.shader.program)
+	glctx.DeleteBuffer(e.shape.buf)
+	e.images.Release()
 }
 
 
-func (e *Engine) Draw(c config.Event) {
+func (e *Engine) Draw(glctx gl.Context, c size.Event) {
 	since := time.Now().Sub(e.started)
 
-	gl.Enable(gl.DEPTH_TEST)
-	gl.DepthFunc(gl.LESS)
+	glctx.Enable(gl.DEPTH_TEST)
+	glctx.DepthFunc(gl.LESS)
 
-	gl.ClearColor(0, 0, 0, 1)
-	gl.Clear(gl.COLOR_BUFFER_BIT)
-	gl.Clear(gl.DEPTH_BUFFER_BIT)
+	glctx.ClearColor(0, 0, 0, 1)
+	glctx.Clear(gl.COLOR_BUFFER_BIT)
+	glctx.Clear(gl.DEPTH_BUFFER_BIT)
 
-	gl.UseProgram(e.shader.program)
+	glctx.UseProgram(e.shader.program)
 
-	m := mgl.Perspective(0.785, float32(c.Width/c.Height), 0.1, 10.0)
-	gl.UniformMatrix4fv(e.shader.projection, m[:])
+	m := mgl.Perspective(0.785, float32(c.WidthPt/c.HeightPt), 0.1, 10.0)
+	glctx.UniformMatrix4fv(e.shader.projection, m[:])
 
 	eye := mgl.Vec3{3, 3, 3}
 	center := mgl.Vec3{0, 0, 0}
 	up := mgl.Vec3{0, 1, 0}
 
 	m = mgl.LookAtV(eye, center, up)
-	gl.UniformMatrix4fv(e.shader.view, m[:])
+	glctx.UniformMatrix4fv(e.shader.view, m[:])
 
 	m = mgl.HomogRotate3D(float32(since.Seconds()), mgl.Vec3{0, 1, 0})
-	gl.UniformMatrix4fv(e.shader.model, m[:])
+	glctx.UniformMatrix4fv(e.shader.model, m[:])
 
-	gl.BindBuffer(gl.ARRAY_BUFFER, e.shape.buf)
+	glctx.BindBuffer(gl.ARRAY_BUFFER, e.shape.buf)
 
 	coordsPerVertex := 3
 	texCoordsPerVertex := 2
 	vertexCount := len(cubeData) / (coordsPerVertex + texCoordsPerVertex)
 
-	gl.EnableVertexAttribArray(e.shader.vertCoord)
-	gl.VertexAttribPointer(e.shader.vertCoord, coordsPerVertex, gl.FLOAT, false, 20, 0) // 4 bytes in float, 5 values per vertex
+	glctx.EnableVertexAttribArray(e.shader.vertCoord)
+	glctx.VertexAttribPointer(e.shader.vertCoord, coordsPerVertex, gl.FLOAT, false, 20, 0) // 4 bytes in float, 5 values per vertex
 
-	gl.EnableVertexAttribArray(e.shader.vertTexCoord)
-	gl.VertexAttribPointer(e.shader.vertTexCoord, texCoordsPerVertex, gl.FLOAT, false, 20, 12)
+	glctx.EnableVertexAttribArray(e.shader.vertTexCoord)
+	glctx.VertexAttribPointer(e.shader.vertTexCoord, texCoordsPerVertex, gl.FLOAT, false, 20, 12)
 
-	gl.BindTexture(gl.TEXTURE_2D, e.shape.texture)
+	glctx.BindTexture(gl.TEXTURE_2D, e.shape.texture)
 
-	gl.DrawArrays(gl.TRIANGLES, 0, vertexCount)
+	glctx.DrawArrays(gl.TRIANGLES, 0, vertexCount)
 
-	gl.DisableVertexAttribArray(e.shader.vertCoord)
+	glctx.DisableVertexAttribArray(e.shader.vertCoord)
 
-	debug.DrawFPS(c)
+	e.fps.Draw(c)
 }
 
 var cubeData = []float32{
@@ -169,24 +176,31 @@ var cubeData = []float32{
 func main() {
 	e := Engine{}
 	app.Main(func(a app.App) {
-		var c config.Event
+		var glctx gl.Context
+		var c size.Event
 		for eve := range a.Events() {
-			switch eve := app.Filter(eve).(type) {
+			switch eve := a.Filter(eve).(type) {
 				case lifecycle.Event:
 				switch eve.Crosses(lifecycle.StageVisible) {
 					case lifecycle.CrossOn:
-					e.Start()
+						glctx, _ = eve.DrawContext.(gl.Context)
+					e.Start(glctx)
 					case lifecycle.CrossOff:
-					e.Stop()
+					e.Stop(glctx)
+						glctx = nil
 				}
-				case config.Event:
+				case size.Event:
 				c = eve
-				e.touchLoc = geom.Point{c.Width / 2, c.Height / 2}
+				e.touchLoc = geom.Point{c.WidthPt / 2, c.WidthPt / 2}
 				case paint.Event:
-				e.Draw(c)
-				a.EndPaint(eve)
+					if glctx == nil || eve.External {
+						continue
+					}
+				e.Draw(glctx, c)
+				a.Publish()
+				a.Send(paint.Event{})
 				case touch.Event:
-				e.touchLoc = eve.Loc
+				// e.touchLoc = geom.Point{eve.X / 2, eve.Y / 2}
 			}
 		}
 	})

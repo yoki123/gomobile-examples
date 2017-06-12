@@ -38,7 +38,7 @@ func loadAsset(name string) ([]byte, error) {
 
 // LoadProgram reads shader sources from the asset repository, compiles, and
 // links them into a program.
-func LoadProgram(vertexAsset, fragmentAsset string) (p gl.Program, err error) {
+func LoadProgram(gltx gl.Context, vertexAsset, fragmentAsset string) (p gl.Program, err error) {
 	vertexSrc, err := loadAsset(vertexAsset)
 	if err != nil {
 		return
@@ -49,13 +49,13 @@ func LoadProgram(vertexAsset, fragmentAsset string) (p gl.Program, err error) {
 		return
 	}
 
-	p, err = glutil.CreateProgram(string(vertexSrc), string(fragmentSrc))
+	p, err = glutil.CreateProgram(gltx, string(vertexSrc), string(fragmentSrc))
 	return
 }
 
 // LoadTexture reads and decodes an image from the asset repository and creates
 // a texture object based on the full dimensions of the image.
-func LoadTexture(name string) (tex gl.Texture, err error) {
+func LoadTexture(glctx gl.Context, name string) (tex gl.Texture, err error) {
 	imgFile, err := asset.Open(name)
 	if err != nil {
 		return
@@ -68,14 +68,14 @@ func LoadTexture(name string) (tex gl.Texture, err error) {
 	rgba := image.NewRGBA(img.Bounds())
 	image_draw.Draw(rgba, rgba.Bounds(), img, image.Point{0, 0}, image_draw.Src)
 
-	tex = gl.CreateTexture()
-	gl.ActiveTexture(gl.TEXTURE0)
-	gl.BindTexture(gl.TEXTURE_2D, tex)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-	gl.TexImage2D(
+	tex = glctx.CreateTexture()
+	glctx.ActiveTexture(gl.TEXTURE0)
+	glctx.BindTexture(gl.TEXTURE_2D, tex)
+	glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+	glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+	glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+	glctx.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+	glctx.TexImage2D(
 		gl.TEXTURE_2D,
 		0,
 		rgba.Rect.Size().X,
